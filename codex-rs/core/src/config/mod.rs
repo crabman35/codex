@@ -2473,7 +2473,7 @@ fn resolve_experimental_request_user_input_enabled(config_toml: &ConfigToml) -> 
         .tools
         .as_ref()
         .and_then(|tools| tools.experimental_request_user_input.as_ref())
-        .is_none_or(|config| config.enabled)
+        .is_some_and(|config| config.enabled)
 }
 
 fn resolve_orchestrator_feature_enabled(

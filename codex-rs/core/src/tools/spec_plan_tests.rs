@@ -435,27 +435,30 @@ fn apply_patch_accepts_environment_id(spec: &ToolSpec) -> bool {
 
 #[tokio::test]
 async fn request_user_input_tool_respects_experimental_config_gate() {
-    let enabled = probe(|_| {}).await;
+    let disabled = probe(|_| {}).await;
+    disabled.assert_visible_lacks(&["request_user_input"]);
+    disabled.assert_registered_lacks(&["request_user_input"]);
+
+    let enabled = probe(|turn| {
+        update_config(turn, |config| {
+            config.experimental_request_user_input_enabled = true;
+        });
+    })
+    .await;
     enabled.assert_visible_contains(&["request_user_input"]);
     enabled.assert_registered_contains(&["request_user_input"]);
     assert_eq!(
         enabled.exposure("request_user_input"),
         ToolExposure::DirectModelOnly
     );
-
-    let disabled = probe(|turn| {
-        update_config(turn, |config| {
-            config.experimental_request_user_input_enabled = false;
-        });
-    })
-    .await;
-    disabled.assert_visible_lacks(&["request_user_input"]);
-    disabled.assert_registered_lacks(&["request_user_input"]);
 }
 
 #[tokio::test]
 async fn request_user_input_stays_direct_in_code_mode_only() {
     let plan = probe(|turn| {
+        update_config(turn, |config| {
+            config.experimental_request_user_input_enabled = true;
+        });
         set_features(turn, &[Feature::CodeMode, Feature::CodeModeOnly]);
     })
     .await;

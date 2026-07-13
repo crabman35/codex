@@ -517,6 +517,7 @@ async fn mcp_tool_call_metadata_records_prior_request_user_input_tool() -> Resul
 
     let mut builder = search_capable_apps_builder(apps_server.chatgpt_base_url.clone())
         .with_config(|config| {
+            config.experimental_request_user_input_enabled = true;
             set_calendar_approval_mode(config, AppToolApproval::Approve);
         });
     let test = builder.build(&server).await?;

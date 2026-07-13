@@ -52,9 +52,10 @@ impl Session {
                 false
             };
         world_state.add_section(AppsInstructionsState::new(apps_available));
-        world_state.add_section(PluginsInstructionsState::new(
-            step_context.mcp.plugins_available(),
-        ));
+        if step_context.mcp.plugins_available() {
+            tracing::trace!("omitting generic plugin guidance");
+        }
+        world_state.add_section(PluginsInstructionsState::new(/*available*/ false));
         let environments = step_context.environments.to_selections();
         let ready_selected_capability_roots = step_context
             .selected_capability_roots

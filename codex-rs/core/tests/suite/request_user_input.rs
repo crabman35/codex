@@ -92,6 +92,7 @@ async fn request_user_input_round_trip_for_mode(
         ..
     } = builder
         .with_config(move |config| {
+            config.experimental_request_user_input_enabled = true;
             if mode == ModeKind::Default {
                 config
                     .features
@@ -258,7 +259,10 @@ async fn request_user_input_interrupt_emits_deferred_token_count() -> anyhow::Re
         cwd,
         session_configured,
         ..
-    } = test_codex().build(&server).await?;
+    } = test_codex()
+        .with_config(|config| config.experimental_request_user_input_enabled = true)
+        .build(&server)
+        .await?;
 
     let call_id = "user-input-interrupt";
     let request_args = json!({
@@ -346,7 +350,8 @@ where
 
     let server = start_mock_server().await;
 
-    let mut builder = test_codex();
+    let mut builder =
+        test_codex().with_config(|config| config.experimental_request_user_input_enabled = true);
     let TestCodex {
         codex,
         cwd,

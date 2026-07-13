@@ -420,14 +420,28 @@ enabled = false
 }
 
 #[tokio::test]
-async fn load_config_resolves_experimental_request_user_input_enabled() -> std::io::Result<()> {
+async fn load_config_disables_request_user_input_by_default() -> std::io::Result<()> {
+    let codex_home = tempdir()?;
+    let config = Config::load_from_base_config_with_overrides(
+        ConfigToml::default(),
+        ConfigOverrides::default(),
+        codex_home.abs(),
+    )
+    .await?;
+
+    assert!(!config.experimental_request_user_input_enabled);
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_config_can_enable_request_user_input() -> std::io::Result<()> {
     let codex_home = tempdir()?;
     let config = Config::load_from_base_config_with_overrides(
         ConfigToml {
             tools: Some(ToolsToml {
                 web_search: None,
                 experimental_request_user_input: Some(ExperimentalRequestUserInput {
-                    enabled: false,
+                    enabled: true,
                 }),
             }),
             ..ConfigToml::default()
@@ -437,7 +451,7 @@ async fn load_config_resolves_experimental_request_user_input_enabled() -> std::
     )
     .await?;
 
-    assert!(!config.experimental_request_user_input_enabled);
+    assert!(config.experimental_request_user_input_enabled);
     Ok(())
 }
 
