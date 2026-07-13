@@ -54,6 +54,58 @@ fn user_instructions_wrapper_count(request: &ResponsesRequest) -> usize {
         .count()
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn default_model_context_is_minimal_but_keeps_tools_and_environment() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let response = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    let mut builder = test_codex();
+    let test = builder.build(&server).await?;
+    test.submit_turn("inspect the default context").await?;
+
+    let request = response.single_request();
+    assert_eq!(
+        request.instructions_text(),
+        codex_models_manager::model_info::BASE_INSTRUCTIONS
+    );
+    assert!(
+        request.body_json()["tools"]
+            .as_array()
+            .is_some_and(|tools| !tools.is_empty()),
+        "tool schemas should remain model-visible"
+    );
+    assert!(
+        request
+            .message_input_texts("user")
+            .iter()
+            .any(|text| text.starts_with("<environment_context>")),
+        "environment context should remain model-visible"
+    );
+    let developer_text = request.message_input_texts("developer").join("\n");
+    for removed_block in [
+        "<permissions instructions>",
+        "<apps_instructions>",
+        "<collaboration_mode>",
+    ] {
+        assert!(
+            !developer_text.contains(removed_block),
+            "default context should omit {removed_block}"
+        );
+    }
+
+    Ok(())
+}
+
 fn format_environment_context_subagents_snapshot(subagents: &[&str]) -> String {
     let subagents_block = if subagents.is_empty() {
         String::new()

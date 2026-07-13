@@ -10085,17 +10085,38 @@ async fn approvals_reviewer_defaults_to_manual_only_without_guardian_feature() -
 }
 
 #[tokio::test]
-async fn prompt_instruction_blocks_can_be_disabled_from_config() -> std::io::Result<()> {
+async fn model_context_defaults_to_minimal_instructions() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .build()
+        .await?;
+
+    assert_eq!(
+        config.base_instructions.as_deref(),
+        Some(codex_models_manager::model_info::BASE_INSTRUCTIONS)
+    );
+    assert!(!config.include_permissions_instructions);
+    assert!(!config.include_apps_instructions);
+    assert!(!config.include_collaboration_mode_instructions);
+    assert!(config.include_skill_instructions);
+    assert!(config.include_environment_context);
+    Ok(())
+}
+
+#[tokio::test]
+async fn prompt_instruction_blocks_can_be_enabled_from_config() -> std::io::Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
         codex_home.path().join(CONFIG_TOML_FILE),
-        r#"include_permissions_instructions = false
-include_apps_instructions = false
-include_collaboration_mode_instructions = false
-include_environment_context = false
+        r#"include_permissions_instructions = true
+include_apps_instructions = true
+include_collaboration_mode_instructions = true
+include_environment_context = true
 
 [skills]
-include_instructions = false
+include_instructions = true
 "#,
     )?;
 
@@ -10105,11 +10126,11 @@ include_instructions = false
         .build()
         .await?;
 
-    assert!(!config.include_permissions_instructions);
-    assert!(!config.include_apps_instructions);
-    assert!(!config.include_collaboration_mode_instructions);
-    assert!(!config.include_skill_instructions);
-    assert!(!config.include_environment_context);
+    assert!(config.include_permissions_instructions);
+    assert!(config.include_apps_instructions);
+    assert!(config.include_collaboration_mode_instructions);
+    assert!(config.include_skill_instructions);
+    assert!(config.include_environment_context);
     Ok(())
 }
 

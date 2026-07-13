@@ -86,6 +86,7 @@ use codex_model_provider_info::OLLAMA_CHAT_PROVIDER_REMOVED_ERROR;
 use codex_model_provider_info::built_in_model_providers;
 use codex_model_provider_info::merge_configured_model_providers;
 use codex_models_manager::ModelsManagerConfig;
+use codex_models_manager::model_info::BASE_INSTRUCTIONS;
 use codex_protocol::config_types::AltScreenMode;
 use codex_protocol::config_types::AutoCompactTokenLimitScope;
 use codex_protocol::config_types::ForcedLoginMethod;
@@ -3612,12 +3613,14 @@ impl Config {
         .await?;
         let base_instructions = base_instructions
             .or(file_base_instructions)
-            .or(cfg.instructions.clone());
+            .or(cfg.instructions.clone())
+            .or_else(|| Some(BASE_INSTRUCTIONS.to_string()));
         let developer_instructions = developer_instructions.or(cfg.developer_instructions);
-        let include_permissions_instructions = cfg.include_permissions_instructions.unwrap_or(true);
-        let include_apps_instructions = cfg.include_apps_instructions.unwrap_or(true);
+        let include_permissions_instructions =
+            cfg.include_permissions_instructions.unwrap_or(false);
+        let include_apps_instructions = cfg.include_apps_instructions.unwrap_or(false);
         let include_collaboration_mode_instructions =
-            cfg.include_collaboration_mode_instructions.unwrap_or(true);
+            cfg.include_collaboration_mode_instructions.unwrap_or(false);
         let include_skill_instructions = cfg
             .skills
             .as_ref()
