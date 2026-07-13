@@ -177,6 +177,9 @@ pub(crate) fn build_model_instructions_update_item(
     previous_turn_settings: Option<&PreviousTurnSettings>,
     next: &TurnContext,
 ) -> Option<String> {
+    if next.config.base_instructions.is_some() {
+        return None;
+    }
     let previous_turn_settings = previous_turn_settings?;
     if previous_turn_settings.model == next.model_info.slug {
         return None;

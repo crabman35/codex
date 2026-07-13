@@ -128,7 +128,9 @@ async fn model_change_appends_model_instructions_developer_message() -> Result<(
     )
     .await;
 
-    let mut builder = test_codex().with_model("gpt-5.2");
+    let mut builder = test_codex()
+        .with_model("gpt-5.2")
+        .with_config(|config| config.base_instructions = None);
     let test = builder.build(&server).await?;
     let next_model = "gpt-5.4";
 
@@ -194,6 +196,7 @@ async fn model_and_personality_change_only_appends_model_instructions() -> Resul
     .await;
 
     let mut builder = test_codex().with_model("gpt-5.4").with_config(|config| {
+        config.base_instructions = None;
         config
             .features
             .enable(Feature::Personality)
