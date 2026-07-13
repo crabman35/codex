@@ -10101,7 +10101,7 @@ async fn model_context_defaults_to_minimal_instructions() -> std::io::Result<()>
     assert!(!config.include_apps_instructions);
     assert!(!config.include_collaboration_mode_instructions);
     assert!(config.include_skill_instructions);
-    assert!(config.include_environment_context);
+    assert!(!config.include_environment_context);
     Ok(())
 }
 

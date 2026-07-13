@@ -55,7 +55,7 @@ fn user_instructions_wrapper_count(request: &ResponsesRequest) -> usize {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn default_model_context_is_minimal_but_keeps_tools_and_environment() -> Result<()> {
+async fn default_model_context_is_minimal_and_keeps_tools() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -88,8 +88,8 @@ async fn default_model_context_is_minimal_but_keeps_tools_and_environment() -> R
         request
             .message_input_texts("user")
             .iter()
-            .any(|text| text.starts_with("<environment_context>")),
-        "environment context should remain model-visible"
+            .all(|text| !text.starts_with("<environment_context>")),
+        "environment context should be omitted by default"
     );
     let developer_text = request.message_input_texts("developer").join("\n");
     for removed_block in [

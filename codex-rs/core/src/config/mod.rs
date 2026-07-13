@@ -3626,7 +3626,7 @@ impl Config {
             .as_ref()
             .and_then(|skills| skills.include_instructions)
             .unwrap_or(true);
-        let include_environment_context = cfg.include_environment_context.unwrap_or(true);
+        let include_environment_context = cfg.include_environment_context.unwrap_or(false);
         let guardian_policy_config =
             guardian_policy_config_from_requirements(config_layer_stack.requirements_toml())
                 .or_else(|| {
