@@ -492,18 +492,19 @@ pub(crate) fn new_user_prompt(
         remote_image_urls,
     }
 }
-/// Create the reasoning history cell emitted at the end of a reasoning block.
+/// Create the reasoning cell shown while a reasoning block streams and retained when it ends.
 ///
 /// The helper snapshots `cwd` into the returned cell so local file links render the same way they
 /// did while the turn was live, even if rendering happens after other app state has advanced. Part
 /// boundaries are preserved so standalone empty placeholders can be removed without changing
-/// literal HTML comments or bold-only summary content.
+/// literal HTML comments or bold-only summary content. Summaries without a structured bold header
+/// remain visible instead of being limited to transcript export.
 pub(crate) fn new_reasoning_summary_block(
     reasoning_parts: Vec<String>,
     cwd: &Path,
 ) -> Box<dyn HistoryCell> {
     let (header, content) = split_reasoning_summary_parts(&reasoning_parts);
-    let transcript_only = header.is_empty();
+    let transcript_only = header.is_empty() && content.trim_start().starts_with("**");
     Box::new(ReasoningSummaryCell::new(
         header,
         content,
@@ -523,18 +524,14 @@ pub(crate) fn split_reasoning_summary_parts(reasoning_parts: &[String]) -> (Stri
             continue;
         }
 
-        let header_end = part.strip_prefix("**").and_then(|after_open| {
-            after_open
-                .find("**")
-                .and_then(|close| (close > 0).then_some(close + 4))
-        });
-        let body = header_end.map_or(part, |header_end| &part[header_end..]);
+        let split_header = split_leading_reasoning_header(part);
+        let body = split_header.map_or(part, |(_, body)| body);
         if body.trim() == "<!-- -->" {
             if content_parts.is_empty()
                 && leading_empty_part_header.is_none()
-                && let Some(header_end) = header_end
+                && let Some((header, _)) = split_header
             {
-                leading_empty_part_header = Some(part[..header_end].to_string());
+                leading_empty_part_header = Some(header.to_string());
             }
             continue;
         }
@@ -547,18 +544,22 @@ pub(crate) fn split_reasoning_summary_parts(reasoning_parts: &[String]) -> (Stri
         return (leading_empty_part_header.unwrap_or_default(), content);
     }
 
-    if let Some(after_open) = content.strip_prefix("**")
-        && let Some(close) = after_open.find("**")
+    if let Some((header, after_close)) = split_leading_reasoning_header(&content)
+        && (after_close.starts_with('\n') || after_close.starts_with('\r'))
     {
-        let after_close_idx = 2 + close + 2;
-        let after_close = &content[after_close_idx..];
-        if after_close.starts_with('\n') || after_close.starts_with('\r') {
-            return (
-                content[..after_close_idx].to_string(),
-                after_close.to_string(),
-            );
-        }
+        return (header.to_string(), after_close.to_string());
     }
 
     (leading_empty_part_header.unwrap_or_default(), content)
+}
+
+/// Split a leading Markdown bold span from the remainder of a reasoning summary part.
+pub(crate) fn split_leading_reasoning_header(part: &str) -> Option<(&str, &str)> {
+    let after_open = part.strip_prefix("**")?;
+    let close = after_open.find("**")?;
+    if close == 0 {
+        return None;
+    }
+    let header_end = close + 4;
+    Some((&part[..header_end], &part[header_end..]))
 }

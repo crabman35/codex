@@ -6,11 +6,8 @@
 use super::*;
 
 impl ChatWidget {
-    pub(super) fn restore_reasoning_status_header(&mut self) {
-        if let Some(header) = extract_first_bold(&self.reasoning_buffer) {
-            self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Thinking;
-            self.set_status_header(header);
-        } else if self.bottom_pane.is_task_running() {
+    pub(super) fn restore_working_status_header(&mut self) {
+        if self.bottom_pane.is_task_running() {
             self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Working;
             self.set_status_header(String::from("Working"));
         }
@@ -68,30 +65,6 @@ impl ChatWidget {
                 .as_ref()
                 .map(|controller| controller.queued_lines() == 0)
                 .unwrap_or(true)
-    }
-
-    /// Restore the status indicator only after commentary completion is pending,
-    /// the turn is still running, and all stream queues have drained.
-    ///
-    /// This gate prevents flicker while normal output is still actively
-    /// streaming, but still restores a visible "working" affordance when a
-    /// commentary block ends before the turn itself has completed.
-    pub(super) fn maybe_restore_status_indicator_after_stream_idle(&mut self) {
-        if !self.status_state.pending_status_indicator_restore
-            || !self.bottom_pane.is_task_running()
-            || !self.stream_controllers_idle()
-        {
-            return;
-        }
-
-        self.bottom_pane.ensure_status_indicator();
-        self.set_status(
-            self.status_state.current_status.header.clone(),
-            self.status_state.current_status.details.clone(),
-            StatusDetailsCapitalization::Preserve,
-            self.status_state.current_status.details_max_lines,
-        );
-        self.status_state.pending_status_indicator_restore = false;
     }
 
     pub(super) fn finalize_completed_assistant_message(&mut self, message: Option<&str>) {
@@ -155,9 +128,7 @@ impl ChatWidget {
             self.record_agent_markdown(&plan_text);
             self.transcript.latest_proposed_plan_markdown = Some(plan_text.clone());
         }
-        // Plan commit ticks can hide the status row; remember whether we streamed plan output so
-        // completion can restore it once stream queues are idle.
-        let should_restore_after_stream = self.plan_stream_controller.is_some();
+        let had_plan_stream = self.plan_stream_controller.is_some();
         self.transcript.plan_delta_buffer.clear();
         self.transcript.plan_item_active = false;
         self.transcript.saw_plan_item_this_turn = true;
@@ -190,42 +161,30 @@ impl ChatWidget {
             self.app_event_tx
                 .send(AppEvent::ConsolidateProposedPlan(source));
         }
-        if should_restore_after_stream {
-            self.status_state.pending_status_indicator_restore = true;
-            self.maybe_restore_status_indicator_after_stream_idle();
+        if had_plan_stream {
             self.request_pending_usage_output_insertion_after_stream_shutdown();
         }
     }
 
     pub(super) fn on_agent_reasoning_delta(&mut self, delta: String) {
-        // For reasoning deltas, do not stream to history. Accumulate the
-        // current reasoning block and extract the first bold element
-        // (between **/**) as the chunk header. Show this header as status.
+        // Keep the current reasoning summary visible while it streams. The active-cell preview is
+        // replaced by a finalized history cell when the reasoning item completes.
         self.reasoning_buffer.push_str(&delta);
+        self.sync_active_reasoning_summary();
 
-        if self.safety_buffering_is_waiting() {
-            self.request_redraw();
-            return;
-        }
-
-        if self.unified_exec_wait_streak.is_some() {
-            // Unified exec waiting should take precedence over reasoning-derived status headers.
-            self.request_redraw();
-            return;
-        }
-
-        if let Some(header) = extract_first_bold(&self.reasoning_buffer) {
-            // Update the shimmer header to the extracted reasoning chunk header.
-            self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Thinking;
-            self.set_status_header(header);
-        } else {
-            // Fallback while we don't yet have a bold header: leave existing header as-is.
-        }
         self.request_redraw();
     }
 
     pub(super) fn on_agent_reasoning_final(&mut self) {
-        // At the end of a reasoning block, record transcript-only content.
+        if self
+            .transcript
+            .active_cell
+            .as_ref()
+            .is_some_and(|cell| cell.as_any().is::<history_cell::ReasoningSummaryCell>())
+        {
+            self.transcript.active_cell = None;
+            self.bump_active_cell_revision();
+        }
         if !self.reasoning_buffer.is_empty() {
             self.reasoning_summary_parts
                 .push(std::mem::take(&mut self.reasoning_buffer));
@@ -241,11 +200,49 @@ impl ChatWidget {
     }
 
     pub(super) fn on_reasoning_section_break(&mut self) {
-        // Start a new reasoning block for header extraction and accumulate transcript.
+        // Start a new reasoning block while retaining earlier parts in the live preview.
         if !self.reasoning_buffer.is_empty() {
             self.reasoning_summary_parts
                 .push(std::mem::take(&mut self.reasoning_buffer));
         }
+        self.sync_active_reasoning_summary();
+    }
+
+    fn sync_active_reasoning_summary(&mut self) {
+        let mut reasoning_parts = self.reasoning_summary_parts.clone();
+        if !self.reasoning_buffer.is_empty() {
+            let current_part = self.reasoning_buffer.trim();
+            let current_body = history_cell::split_leading_reasoning_header(current_part)
+                .filter(|(_, body)| {
+                    body.is_empty() || body.starts_with('\n') || body.starts_with('\r')
+                })
+                .map_or(current_part, |(_, body)| {
+                    body.trim_start_matches(['\r', '\n'])
+                });
+            if !current_body.is_empty() {
+                reasoning_parts.push(current_body.to_string());
+            }
+        }
+        if reasoning_parts.is_empty() {
+            return;
+        }
+
+        let cell = history_cell::new_reasoning_summary_block(reasoning_parts, &self.config.cwd);
+        if cell.display_lines(u16::MAX).is_empty() {
+            return;
+        }
+
+        let replacing_reasoning_preview = self
+            .transcript
+            .active_cell
+            .as_ref()
+            .is_some_and(|active| active.as_any().is::<history_cell::ReasoningSummaryCell>());
+        if !replacing_reasoning_preview {
+            self.flush_active_cell();
+        }
+        self.transcript.active_cell = Some(cell);
+        self.bump_active_cell_revision();
+        self.record_visible_turn_activity();
     }
 
     pub(super) fn on_stream_error(&mut self, message: String, additional_details: Option<String>) {
@@ -262,9 +259,6 @@ impl ChatWidget {
 
     /// Handle completion of an `AgentMessage` turn item.
     ///
-    /// Commentary completion sets a deferred restore flag so the status row
-    /// returns once stream queues are idle. Final-answer completion (or absent
-    /// phase for legacy models) clears the flag to preserve historical behavior.
     pub(super) fn on_agent_message_item_completed(
         &mut self,
         item: AgentMessageItem,
@@ -300,12 +294,6 @@ impl ChatWidget {
                 }
             });
         }
-        self.status_state.pending_status_indicator_restore = match item.phase {
-            // Models that don't support preambles only output AgentMessageItems on turn completion.
-            Some(MessagePhase::FinalAnswer) | None => !self.input_queue.pending_steers.is_empty(),
-            Some(MessagePhase::Commentary) => true,
-        };
-        self.maybe_restore_status_indicator_after_stream_idle();
     }
 
     /// Periodic tick for stream commits. In smooth mode this preserves one-line pacing, while
@@ -327,9 +315,7 @@ impl ChatWidget {
     /// Runs a commit tick for the current stream queue snapshot.
     ///
     /// `scope` controls whether this call may commit in smooth mode or only when catch-up
-    /// is currently active. While lines are actively streaming we hide the status row to avoid
-    /// duplicate "in progress" affordances. Restoration is gated separately so we only re-show
-    /// the row after commentary completion once stream queues are idle.
+    /// is currently active. The status row remains visible independently of streamed output.
     pub(super) fn run_commit_tick_with_scope(&mut self, scope: CommitTickScope) {
         let now = Instant::now();
         let outcome = run_commit_tick(
@@ -340,13 +326,11 @@ impl ChatWidget {
             now,
         );
         for cell in outcome.cells {
-            self.bottom_pane.hide_status_indicator();
             self.add_boxed_history(cell);
         }
         self.sync_active_stream_tail();
 
         if outcome.has_controller && outcome.all_idle {
-            self.maybe_restore_status_indicator_after_stream_idle();
             self.app_event_tx.send(AppEvent::StopCommitAnimation);
         }
 
@@ -378,10 +362,6 @@ impl ChatWidget {
     }
 
     pub(super) fn handle_stream_finished(&mut self) {
-        if self.task_complete_pending {
-            self.bottom_pane.hide_status_indicator();
-            self.task_complete_pending = false;
-        }
         // A completed stream indicates non-exec content was just inserted.
         self.flush_interrupt_queue();
     }
@@ -443,7 +423,6 @@ impl ChatWidget {
                 return;
             }
 
-            self.bottom_pane.hide_status_indicator();
             self.transcript.active_cell =
                 Some(Box::new(history_cell::StreamingAgentTailCell::new(
                     tail_lines,
@@ -460,7 +439,6 @@ impl ChatWidget {
                 return;
             }
 
-            self.bottom_pane.hide_status_indicator();
             self.transcript.active_cell = Some(Box::new(history_cell::StreamingPlanTailCell::new(
                 tail_lines,
                 !controller.tail_starts_stream(),

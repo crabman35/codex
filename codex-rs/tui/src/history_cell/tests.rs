@@ -2264,8 +2264,22 @@ fn reasoning_summary_block() {
         &test_cwd(),
     );
 
-    let rendered_display = render_lines(&cell.display_lines(/*width*/ 80));
+    let display_lines = cell.display_lines(/*width*/ 80);
+    let rendered_display = render_lines(&display_lines);
     assert_eq!(rendered_display, vec!["• Detailed reasoning goes here."]);
+    assert!(
+        display_lines
+            .iter()
+            .flat_map(|line| &line.spans)
+            .all(|span| {
+                span.content.trim().is_empty()
+                    || span.content.starts_with('•')
+                    || span
+                        .style
+                        .add_modifier
+                        .contains(ratatui::style::Modifier::ITALIC)
+            })
+    );
 
     let rendered_transcript = render_transcript(cell.as_ref());
     assert_eq!(rendered_transcript, vec!["• Detailed reasoning goes here."]);

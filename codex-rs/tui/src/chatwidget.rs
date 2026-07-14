@@ -588,7 +588,6 @@ pub(crate) struct ChatWidget {
     unified_exec_wait_streak: Option<UnifiedExecWaitStreak>,
     turn_lifecycle: TurnLifecycleState,
     safety_buffering: SafetyBufferingState,
-    task_complete_pending: bool,
     unified_exec_processes: Vec<UnifiedExecProcessSummary>,
     /// Tracks per-server MCP startup state while startup is in progress.
     ///
@@ -2039,36 +2038,6 @@ const SIDE_PLACEHOLDERS: [&str; 3] = [
     "How many files have been modified?",
     "Will this algorithm scale well?",
 ];
-
-// Extract the first bold (Markdown) element in the form **...** from `s`.
-// Returns the inner text if found; otherwise `None`.
-fn extract_first_bold(s: &str) -> Option<String> {
-    let bytes = s.as_bytes();
-    let mut i = 0usize;
-    while i + 1 < bytes.len() {
-        if bytes[i] == b'*' && bytes[i + 1] == b'*' {
-            let start = i + 2;
-            let mut j = start;
-            while j + 1 < bytes.len() {
-                if bytes[j] == b'*' && bytes[j + 1] == b'*' {
-                    // Found closing **
-                    let inner = &s[start..j];
-                    let trimmed = inner.trim();
-                    if !trimmed.is_empty() {
-                        return Some(trimmed.to_string());
-                    } else {
-                        return None;
-                    }
-                }
-                j += 1;
-            }
-            // No closing; stop searching (wait for more deltas)
-            return None;
-        }
-        i += 1;
-    }
-    None
-}
 
 #[cfg(test)]
 pub(crate) mod tests;

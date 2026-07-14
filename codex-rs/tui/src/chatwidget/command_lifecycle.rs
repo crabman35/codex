@@ -14,7 +14,7 @@ impl ChatWidget {
         let cell = history_cell::new_unified_exec_interaction(wait.command_display, String::new());
         self.app_event_tx
             .send(AppEvent::InsertHistoryCell(Box::new(cell)));
-        self.restore_reasoning_status_header();
+        self.restore_working_status_header();
     }
 
     pub(super) fn on_command_execution_started(&mut self, item: ThreadItem) {

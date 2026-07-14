@@ -181,17 +181,17 @@ impl App {
         true
     }
 
-    /// Mirrors the visible thread into the contextual footer row.
+    /// Mirrors the tracked threads and visible selection into the contextual footer row.
     ///
     /// The footer sometimes shows ambient context instead of an instructional hint. In multi-agent
     /// sessions, that contextual row includes the currently viewed agent label. The label is
     /// intentionally hidden until there is more than one known thread so single-thread sessions do
     /// not spend footer space restating that the user is already on the main conversation.
-    pub(super) fn sync_active_agent_label(&mut self) {
-        let label = self
+    pub(super) fn sync_agent_status_line(&mut self) {
+        let line = self
             .agent_navigation
-            .active_agent_label(self.current_displayed_thread_id(), self.primary_thread_id);
-        self.chat_widget.set_active_agent_label(label);
+            .agent_status_line(self.current_displayed_thread_id(), self.primary_thread_id);
+        self.chat_widget.set_agent_status_line(line);
         self.sync_side_thread_ui();
     }
 
@@ -948,7 +948,7 @@ impl App {
             sub_agent_activity_item(notification).and_then(sub_agent_activity_display)
         {
             self.agent_navigation.record_sub_agent_activity(activity);
-            self.sync_active_agent_label();
+            self.sync_agent_status_line();
             return;
         }
 

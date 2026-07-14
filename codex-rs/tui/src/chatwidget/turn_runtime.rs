@@ -73,7 +73,6 @@ impl ChatWidget {
         self.update_task_running_state();
         self.status_state.retry_status_header = None;
         self.clear_active_hook_cell();
-        self.status_state.pending_status_indicator_restore = false;
         self.bottom_pane
             .set_interrupt_hint_visible(/*visible*/ true);
         self.status_state.terminal_title_status_kind = TerminalTitleStatusKind::Working;
@@ -173,7 +172,6 @@ impl ChatWidget {
             self.request_status_line_git_summary_refresh();
         }
         // Mark task stopped and request redraw now that all content is in history.
-        self.status_state.pending_status_indicator_restore = false;
         self.input_queue.user_turn_pending_start = false;
         self.clear_active_hook_cell();
         self.turn_lifecycle.finish();
@@ -331,7 +329,6 @@ impl ChatWidget {
         self.stream_controller = None;
         self.plan_stream_controller = None;
         self.request_pending_usage_output_insertion_after_stream_shutdown();
-        self.status_state.pending_status_indicator_restore = false;
         self.clear_cancel_edit();
         self.request_status_line_branch_refresh();
         self.request_status_line_git_summary_refresh();

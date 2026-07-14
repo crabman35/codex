@@ -175,7 +175,7 @@ impl App {
         );
         self.agent_navigation
             .upsert(thread_id, agent_nickname, agent_role, is_closed);
-        self.sync_active_agent_label();
+        self.sync_agent_status_line();
     }
 
     /// Marks a cached picker thread closed and recomputes the contextual footer label.
@@ -184,7 +184,7 @@ impl App {
     /// transcripts, and the stable next/previous traversal order should not collapse around them.
     pub(super) fn mark_agent_picker_thread_closed(&mut self, thread_id: ThreadId) {
         self.agent_navigation.mark_closed(thread_id);
-        self.sync_active_agent_label();
+        self.sync_agent_status_line();
     }
 
     pub(super) async fn refresh_agent_picker_thread_liveness(
@@ -342,7 +342,7 @@ impl App {
             );
         }
         self.chat_widget = chat_widget;
-        self.sync_active_agent_label();
+        self.sync_agent_status_line();
     }
 
     pub(super) async fn select_agent_thread(
@@ -486,7 +486,7 @@ impl App {
         self.pending_app_server_requests.clear();
         self.pending_startup_thread_start = false;
         self.chat_widget.set_pending_thread_approvals(Vec::new());
-        self.sync_active_agent_label();
+        self.sync_agent_status_line();
     }
 
     pub(super) async fn handle_startup_thread_started(
@@ -691,7 +691,7 @@ impl App {
             self.agent_navigation
                 .set_agent_path(thread.thread_id, agent_path);
         }
-        self.sync_active_agent_label();
+        self.sync_agent_status_line();
 
         !had_read_error
     }

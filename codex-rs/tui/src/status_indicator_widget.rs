@@ -24,7 +24,7 @@ use crate::key_hint::KeyBinding;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use crate::motion::MotionMode;
 use crate::motion::ReducedMotionIndicator;
-use crate::motion::activity_indicator;
+use crate::motion::braille_activity_indicator;
 use crate::motion::shimmer_text;
 use crate::render::renderable::Renderable;
 use crate::text_formatting::capitalize_first;
@@ -253,15 +253,20 @@ impl Renderable for StatusIndicatorWidget {
         let motion_mode = MotionMode::from_animations_enabled(self.animations_enabled);
 
         let mut spans = Vec::with_capacity(5);
-        if let Some(indicator) = activity_indicator(
-            Some(self.last_resume_at),
+        if let Some(indicator) = braille_activity_indicator(
+            elapsed_duration,
             motion_mode,
             ReducedMotionIndicator::Hidden,
         ) {
             spans.push(indicator);
             spans.push(" ".into());
         }
-        spans.extend(shimmer_text(&self.header, motion_mode));
+        let header = if self.header == "Working" {
+            "Working..."
+        } else {
+            &self.header
+        };
+        spans.extend(shimmer_text(header, motion_mode));
         if !spans.is_empty() {
             spans.push(" ".into());
         }
@@ -412,7 +417,7 @@ mod tests {
             .map(ratatui::buffer::Cell::symbol)
             .collect::<String>();
 
-        assert!(line.starts_with("Working (0s • esc to interrupt)"));
+        assert!(line.starts_with("Working... (0s • esc to interrupt)"));
     }
 
     #[test]

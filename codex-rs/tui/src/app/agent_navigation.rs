@@ -24,13 +24,16 @@ use crate::multi_agents::format_agent_picker_item_name;
 use crate::multi_agents::next_agent_shortcut;
 use crate::multi_agents::previous_agent_shortcut;
 use codex_protocol::ThreadId;
+use ratatui::style::Stylize;
+use ratatui::text::Line;
 use ratatui::text::Span;
 use std::collections::HashMap;
 
 /// Small state container for multi-agent picker ordering and labeling.
 ///
 /// `App` owns thread lifecycle and UI side effects. This type keeps the pure rules for stable
-/// spawn-order traversal, picker copy, and active-agent labels together and separately testable.
+/// spawn-order traversal, picker copy, and the footer agent overview together and separately
+/// testable.
 ///
 /// The core invariant is that `order` records first-seen thread ids exactly once, while `threads`
 /// stores the latest metadata for those ids. Mutation is intentionally funneled through `upsert`,
@@ -254,47 +257,59 @@ impl AgentNavigationState {
         Some(ordered_threads[next_idx].0)
     }
 
-    /// Derives the contextual footer label for the currently displayed thread.
+    /// Derives the contextual footer row for all tracked agent threads.
     ///
     /// This intentionally returns `None` until there is more than one tracked thread so
     /// single-thread sessions do not waste footer space restating the obvious. When metadata for
-    /// the displayed thread is missing, the label falls back to the same generic naming rules used
-    /// by the picker.
-    pub(crate) fn active_agent_label(
+    /// the displayed thread is missing, no selection marker is rendered until thread state catches
+    /// up. Labels use the same metadata and fallback rules as the picker.
+    pub(crate) fn agent_status_line(
         &self,
         current_displayed_thread_id: Option<ThreadId>,
         primary_thread_id: Option<ThreadId>,
-    ) -> Option<String> {
+    ) -> Option<Line<'static>> {
         if self.threads.len() <= 1 {
             return None;
         }
 
-        let thread_id = current_displayed_thread_id?;
-        let is_primary = primary_thread_id == Some(thread_id);
-        Some(
-            self.threads
-                .get(&thread_id)
-                .map(|entry| {
-                    if !is_primary
-                        && let Some(agent_path) = entry
-                            .agent_path
-                            .as_deref()
-                            .filter(|agent_path| !agent_path.trim().is_empty())
-                    {
-                        return format!("`{agent_path}`");
-                    }
-                    format_agent_picker_item_name(
-                        entry.agent_nickname.as_deref(),
-                        entry.agent_role.as_deref(),
-                        is_primary,
-                    )
-                })
-                .unwrap_or_else(|| {
-                    format_agent_picker_item_name(
-                        /*agent_nickname*/ None, /*agent_role*/ None, is_primary,
-                    )
-                }),
-        )
+        let mut spans = vec!["Agents: ".dim()];
+        for (index, (thread_id, entry)) in self.ordered_threads().into_iter().enumerate() {
+            if index > 0 {
+                spans.push("  ".into());
+            }
+            if current_displayed_thread_id == Some(thread_id) {
+                spans.push("› ".cyan().bold());
+            }
+            if entry.is_closed {
+                spans.push("○ ".dim());
+            } else {
+                spans.push("● ".green());
+            }
+
+            let is_primary = primary_thread_id == Some(thread_id);
+            let label = if !is_primary
+                && let Some(agent_path) = entry
+                    .agent_path
+                    .as_deref()
+                    .filter(|agent_path| !agent_path.trim().is_empty())
+            {
+                agent_path.to_string()
+            } else {
+                format_agent_picker_item_name(
+                    entry.agent_nickname.as_deref(),
+                    entry.agent_role.as_deref(),
+                    is_primary,
+                )
+            };
+            if current_displayed_thread_id == Some(thread_id) {
+                spans.push(Span::from(label).bold());
+            } else if entry.is_closed {
+                spans.push(Span::from(label).dim());
+            } else {
+                spans.push(label.into());
+            }
+        }
+        Some(Line::from(spans))
     }
 
     /// Builds the `/agent` picker subtitle from the same canonical bindings used by key handling.
@@ -405,16 +420,20 @@ mod tests {
     }
 
     #[test]
-    fn active_agent_label_tracks_current_thread() {
-        let (state, main_thread_id, first_agent_id, _) = populated_state();
+    fn agent_status_line_tracks_all_threads_and_current_selection() {
+        let (mut state, main_thread_id, first_agent_id, second_agent_id) = populated_state();
+        state.mark_closed(second_agent_id);
 
         assert_eq!(
-            state.active_agent_label(Some(first_agent_id), Some(main_thread_id)),
-            Some("Robie [explorer]".to_string())
-        );
-        assert_eq!(
-            state.active_agent_label(Some(main_thread_id), Some(main_thread_id)),
-            Some("Main [default]".to_string())
+            state
+                .agent_status_line(Some(first_agent_id), Some(main_thread_id))
+                .map(|line| {
+                    line.spans
+                        .iter()
+                        .map(|span| span.content.as_ref())
+                        .collect::<String>()
+                }),
+            Some("Agents: ● Main [default]  › ● Robie [explorer]  ○ Bob [worker]".to_string())
         );
     }
 }

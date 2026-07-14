@@ -1051,6 +1051,57 @@ async fn live_reasoning_summary_is_not_rendered_twice_when_item_completes() {
 }
 
 #[tokio::test]
+async fn live_reasoning_summary_streams_in_active_cell() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+
+    handle_agent_reasoning_delta(&mut chat, "**Inspecting the implementation**\n\nReading ");
+    handle_agent_reasoning_delta(&mut chat, "the relevant source files.");
+
+    let rendered = chat
+        .active_cell_transcript_lines(/*width*/ 80)
+        .map(|lines| lines_to_single_string(&lines))
+        .expect("live reasoning summary cell");
+    insta::assert_snapshot!("live_reasoning_summary_streams_in_active_cell", rendered);
+
+    handle_agent_reasoning_final(&mut chat);
+
+    assert!(chat.transcript.active_cell.is_none());
+    let cells = drain_insert_history(&mut rx);
+    assert_eq!(cells.len(), 1);
+    assert_eq!(
+        lines_to_single_string(&cells[0])
+            .matches("Reading the relevant source files.")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn active_reasoning_summary_keeps_working_status() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.on_task_started();
+
+    handle_agent_reasoning_delta(
+        &mut chat,
+        "**Designing the build**\n\nDesigning reproducible build output",
+    );
+    chat.on_reasoning_section_break();
+    handle_agent_reasoning_delta(&mut chat, "**Designing the descriptor structure**");
+
+    let rendered = chat
+        .active_cell_transcript_lines(/*width*/ 80)
+        .map(|lines| lines_to_single_string(&lines))
+        .expect("completed reasoning summary cell");
+    assert_eq!(rendered, "• Designing reproducible build output\n");
+    assert_eq!(chat.status_state.current_status.header, "Working");
+
+    handle_agent_reasoning_final(&mut chat);
+
+    assert_eq!(chat.status_state.current_status.header, "Working");
+    assert_eq!(drain_insert_history(&mut rx).len(), 1);
+}
+
+#[tokio::test]
 async fn live_reasoning_summary_drops_empty_parts_without_losing_content() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.show_welcome_banner = false;

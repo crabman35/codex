@@ -74,12 +74,12 @@ impl ChatWidget {
         self.bottom_pane.set_status_line_hyperlink(url);
     }
 
-    /// Forwards the contextual active-agent label into the bottom-pane footer pipeline.
+    /// Forwards the contextual agent-status row into the bottom-pane footer pipeline.
     ///
     /// `ChatWidget` stays a pass-through here so `App` remains the owner of "which thread is the
     /// user actually looking at?" and the footer stack remains a pure renderer of that decision.
-    pub(crate) fn set_active_agent_label(&mut self, active_agent_label: Option<String>) {
-        self.bottom_pane.set_active_agent_label(active_agent_label);
+    pub(crate) fn set_agent_status_line(&mut self, agent_status_line: Option<Line<'static>>) {
+        self.bottom_pane.set_agent_status_line(agent_status_line);
     }
 
     /// Recomputes footer status-line content from config and current runtime state.

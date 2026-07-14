@@ -155,7 +155,6 @@ impl ChatWidget {
             unified_exec_wait_streak: None,
             turn_lifecycle: TurnLifecycleState::new(prevent_idle_sleep),
             safety_buffering: SafetyBufferingState::default(),
-            task_complete_pending: false,
             unified_exec_processes: Vec::new(),
             mcp_startup_status: None,
             mcp_startup_expected_servers: None,

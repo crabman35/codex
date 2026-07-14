@@ -47,13 +47,6 @@ impl ChatWidget {
         }
     }
 
-    pub(super) fn safety_buffering_is_waiting(&self) -> bool {
-        self.safety_buffering
-            .active
-            .as_ref()
-            .is_some_and(|active| !active.agent_message_started)
-    }
-
     pub(crate) fn can_retry_safety_buffered_turn(&self, turn_id: &str) -> bool {
         self.turn_lifecycle.agent_turn_running
             && self
@@ -108,7 +101,7 @@ impl ChatWidget {
                 self.bottom_pane
                     .dismiss_view_by_id(SAFETY_BUFFERING_PROMPT_VIEW_ID);
                 self.safety_buffering.active = None;
-                self.restore_reasoning_status_header();
+                self.restore_working_status_header();
             }
             return;
         }

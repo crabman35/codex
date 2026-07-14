@@ -1780,12 +1780,12 @@ impl BottomPane {
         }
     }
 
-    /// Updates the contextual footer label and requests a redraw only when it changed.
+    /// Updates the contextual agent-status row and requests a redraw only when it changed.
     ///
     /// This keeps the footer plumbing cheap during thread transitions where `App` may recompute
     /// the label several times while the visible thread settles.
-    pub(crate) fn set_active_agent_label(&mut self, active_agent_label: Option<String>) {
-        if self.composer.set_active_agent_label(active_agent_label) {
+    pub(crate) fn set_agent_status_line(&mut self, agent_status_line: Option<Line<'static>>) {
+        if self.composer.set_agent_status_line(agent_status_line) {
             self.request_redraw();
         }
     }
@@ -2379,7 +2379,7 @@ mod tests {
         pane.render(area, &mut buf);
 
         let bufs = snapshot_buffer(&buf);
-        assert!(bufs.contains("• Working"), "expected Working header");
+        assert!(bufs.contains("Working..."), "expected Working header");
     }
 
     #[test]

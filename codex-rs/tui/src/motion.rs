@@ -3,12 +3,16 @@
 //! Callers choose an explicit reduced-motion fallback here instead of reaching
 //! directly for time-varying spinner or shimmer helpers.
 
+use std::time::Duration;
 use std::time::Instant;
 
 use ratatui::style::Stylize;
 use ratatui::text::Span;
 
 use crate::shimmer::shimmer_spans;
+
+const BRAILLE_ACTIVITY_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const BRAILLE_ACTIVITY_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MotionMode {
@@ -39,6 +43,24 @@ pub(crate) fn activity_indicator(
 ) -> Option<Span<'static>> {
     match motion_mode {
         MotionMode::Animated => Some(animated_activity_indicator(start_time)),
+        MotionMode::Reduced => match reduced_motion_indicator {
+            ReducedMotionIndicator::Hidden => None,
+            ReducedMotionIndicator::StaticBullet => Some("•".dim()),
+        },
+    }
+}
+
+pub(crate) fn braille_activity_indicator(
+    elapsed: Duration,
+    motion_mode: MotionMode,
+    reduced_motion_indicator: ReducedMotionIndicator,
+) -> Option<Span<'static>> {
+    match motion_mode {
+        MotionMode::Animated => {
+            let frame_index =
+                (elapsed.as_millis() / BRAILLE_ACTIVITY_INTERVAL.as_millis()) as usize;
+            Some(BRAILLE_ACTIVITY_FRAMES[frame_index % BRAILLE_ACTIVITY_FRAMES.len()].into())
+        }
         MotionMode::Reduced => match reduced_motion_indicator {
             ReducedMotionIndicator::Hidden => None,
             ReducedMotionIndicator::StaticBullet => Some("•".dim()),
@@ -102,6 +124,22 @@ mod tests {
                 ReducedMotionIndicator::StaticBullet,
             ),
             Some("•".dim())
+        );
+        assert_eq!(
+            braille_activity_indicator(
+                BRAILLE_ACTIVITY_INTERVAL * 4,
+                MotionMode::Animated,
+                ReducedMotionIndicator::Hidden,
+            ),
+            Some("⠼".into())
+        );
+        assert_eq!(
+            braille_activity_indicator(
+                Duration::ZERO,
+                MotionMode::Reduced,
+                ReducedMotionIndicator::Hidden,
+            ),
+            None
         );
     }
 

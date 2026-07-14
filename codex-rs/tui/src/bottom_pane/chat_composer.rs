@@ -191,11 +191,12 @@ use super::footer::footer_hint_items_width;
 use super::footer::footer_line_width;
 use super::footer::inset_footer_hint_area;
 use super::footer::max_left_width_for_right;
-use super::footer::passive_footer_status_line;
+use super::footer::passive_footer_lines;
 use super::footer::render_context_right;
 use super::footer::render_footer_from_props;
 use super::footer::render_footer_hint_items;
 use super::footer::render_footer_line;
+use super::footer::render_footer_lines;
 use super::footer::reset_mode_after_activity;
 use super::footer::side_conversation_context_line;
 use super::footer::single_line_footer_layout;
@@ -528,7 +529,7 @@ impl ChatComposer {
                 status_line_hyperlink_url: None,
                 status_line_enabled: false,
                 side_conversation_context_label: None,
-                active_agent_label: None,
+                agent_status_line: None,
                 external_editor_key: Some(key_hint::ctrl(KeyCode::Char('g'))),
                 show_transcript_key: Some(key_hint::ctrl(KeyCode::Char('t'))),
                 insert_newline_key: footer_insert_newline_key(
@@ -3393,7 +3394,7 @@ impl ChatComposer {
                 reasoning_down: self.footer.reasoning_down_key,
                 reasoning_up: self.footer.reasoning_up_key,
             },
-            active_agent_label: self.footer.active_agent_label.clone(),
+            agent_status_line: self.footer.agent_status_line.clone(),
         }
     }
 
@@ -3917,16 +3918,19 @@ impl ChatComposer {
         true
     }
 
-    /// Replaces the contextual footer label for the currently viewed agent.
+    /// Replaces the contextual footer row for the tracked agents.
     ///
     /// Returning `false` means the value was unchanged, so callers can skip redraw work. This
     /// field is intentionally just cached presentation state; `ChatComposer` does not infer which
     /// thread is active on its own.
-    pub(crate) fn set_active_agent_label(&mut self, active_agent_label: Option<String>) -> bool {
-        if self.footer.active_agent_label == active_agent_label {
+    pub(crate) fn set_agent_status_line(
+        &mut self,
+        agent_status_line: Option<Line<'static>>,
+    ) -> bool {
+        if self.footer.agent_status_line == agent_status_line {
             return false;
         }
-        self.footer.active_agent_label = active_agent_label;
+        self.footer.agent_status_line = agent_status_line;
         true
     }
 }
@@ -4181,17 +4185,23 @@ impl ChatComposer {
                     let available_width =
                         hint_rect.width.saturating_sub(FOOTER_INDENT_COLS as u16) as usize;
                     let status_line_active = uses_passive_footer_status_layout(&footer_props);
-                    let combined_status_line = if status_line_active {
-                        passive_footer_status_line(&footer_props)
+                    let passive_lines = if status_line_active {
+                        passive_footer_lines(&footer_props)
                     } else {
-                        None
+                        Vec::new()
                     };
-                    let mut truncated_status_line = if status_line_active {
-                        combined_status_line.as_ref().map(|line| {
-                            truncate_line_with_ellipsis_if_overflow(line.clone(), available_width)
-                        })
+                    let mut truncated_passive_lines = if status_line_active {
+                        passive_lines
+                            .iter()
+                            .map(|line| {
+                                truncate_line_with_ellipsis_if_overflow(
+                                    line.clone(),
+                                    available_width,
+                                )
+                            })
+                            .collect::<Vec<_>>()
                     } else {
-                        None
+                        Vec::new()
                     };
                     let left_mode_indicator = if status_line_active {
                         None
@@ -4208,8 +4218,8 @@ impl ChatComposer {
                     } else if let Some(items) = active_footer_hint_override {
                         footer_hint_items_width(items)
                     } else if status_line_active {
-                        truncated_status_line
-                            .as_ref()
+                        truncated_passive_lines
+                            .first()
                             .map(|line| line.width() as u16)
                             .unwrap_or(0)
                     } else {
@@ -4242,12 +4252,12 @@ impl ChatComposer {
                     if status_line_active
                         && let Some(max_left) = max_left_width_for_right(hint_rect, right_width)
                         && left_width > max_left
-                        && let Some(line) = combined_status_line.as_ref().map(|line| {
+                        && let Some(line) = passive_lines.first().map(|line| {
                             truncate_line_with_ellipsis_if_overflow(line.clone(), max_left as usize)
                         })
                     {
                         left_width = line.width() as u16;
-                        truncated_status_line = Some(line);
+                        truncated_passive_lines[0] = line;
                     }
                     let can_show_left_and_context =
                         can_show_left_with_context(hint_rect, left_width, right_width);
@@ -4297,8 +4307,12 @@ impl ChatComposer {
                         match summary_left {
                             SummaryLeft::Default => {
                                 if status_line_active {
-                                    if let Some(line) = truncated_status_line.clone() {
-                                        render_footer_line(hint_rect, buf, line);
+                                    if !truncated_passive_lines.is_empty() {
+                                        render_footer_lines(
+                                            hint_rect,
+                                            buf,
+                                            truncated_passive_lines.clone(),
+                                        );
                                     } else {
                                         render_footer_from_props(
                                             hint_rect,
@@ -4334,8 +4348,8 @@ impl ChatComposer {
                     } else if let Some(items) = active_footer_hint_override {
                         render_footer_hint_items(hint_rect, buf, items);
                     } else if status_line_active {
-                        if let Some(line) = truncated_status_line {
-                            render_footer_line(hint_rect, buf, line);
+                        if !truncated_passive_lines.is_empty() {
+                            render_footer_lines(hint_rect, buf, truncated_passive_lines);
                         }
                     } else {
                         render_footer_from_props(

@@ -1494,7 +1494,7 @@ fn assert_no_owner_nudge_or_rate_limit_refresh(
 }
 
 #[tokio::test]
-async fn streaming_final_answer_keeps_task_running_state() {
+async fn streaming_final_answer_keeps_status_indicator_visible() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());
 
@@ -1504,7 +1504,11 @@ async fn streaming_final_answer_keeps_task_running_state() {
     drain_insert_history(&mut rx);
 
     assert!(chat.bottom_pane.is_task_running());
-    assert!(!chat.bottom_pane.status_indicator_visible());
+    assert!(chat.bottom_pane.status_indicator_visible());
+    assert_chatwidget_snapshot!(
+        "streaming_final_answer_keeps_working_status_visible",
+        render_bottom_popup(&chat, /*width*/ 48)
+    );
 
     chat.bottom_pane
         .set_composer_text("queued submission".to_string(), Vec::new(), Vec::new());
@@ -1629,7 +1633,7 @@ fn assert_goal_paused_event(
 }
 
 #[tokio::test]
-async fn idle_commit_ticks_do_not_restore_status_without_commentary_completion() {
+async fn commit_ticks_keep_status_visible_while_streaming() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     chat.on_task_started();
@@ -1639,16 +1643,21 @@ async fn idle_commit_ticks_do_not_restore_status_without_commentary_completion()
     chat.on_commit_tick();
     drain_insert_history(&mut rx);
 
-    assert_eq!(chat.bottom_pane.status_indicator_visible(), false);
+    assert_eq!(chat.bottom_pane.status_indicator_visible(), true);
     assert_eq!(chat.bottom_pane.is_task_running(), true);
 
-    // A second idle tick should not toggle the row back on and cause jitter.
+    // A second idle tick should leave the row in place without causing jitter.
     chat.on_commit_tick();
+    assert_eq!(chat.bottom_pane.status_indicator_visible(), true);
+
+    chat.on_task_complete(
+        /*last_agent_message*/ None, /*duration_ms*/ None, /*from_replay*/ false,
+    );
     assert_eq!(chat.bottom_pane.status_indicator_visible(), false);
 }
 
 #[tokio::test]
-async fn final_answer_completion_restores_status_indicator_for_pending_steer() {
+async fn final_answer_completion_keeps_status_indicator_for_pending_steer() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());
 
@@ -1662,7 +1671,7 @@ async fn final_answer_completion_restores_status_indicator_for_pending_steer() {
     chat.on_commit_tick();
     drain_insert_history(&mut rx);
 
-    assert_eq!(chat.bottom_pane.status_indicator_visible(), false);
+    assert_eq!(chat.bottom_pane.status_indicator_visible(), true);
     assert_eq!(chat.bottom_pane.is_task_running(), true);
 
     chat.bottom_pane.set_composer_text(
@@ -1707,7 +1716,7 @@ async fn final_answer_completion_restores_status_indicator_for_pending_steer() {
 }
 
 #[tokio::test]
-async fn commentary_completion_restores_status_indicator_before_exec_begin() {
+async fn commentary_completion_keeps_status_indicator_before_exec_begin() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 
     chat.on_task_started();
@@ -1717,7 +1726,7 @@ async fn commentary_completion_restores_status_indicator_before_exec_begin() {
     chat.on_commit_tick();
     drain_insert_history(&mut rx);
 
-    assert_eq!(chat.bottom_pane.status_indicator_visible(), false);
+    assert_eq!(chat.bottom_pane.status_indicator_visible(), true);
 
     complete_assistant_message(
         &mut chat,
@@ -2084,7 +2093,7 @@ async fn status_widget_active_snapshot() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     // Activate the status indicator by simulating a task start.
     handle_turn_started(&mut chat, "turn-1");
-    // Provide a deterministic header via a bold reasoning chunk.
+    // Reasoning summaries render in history without replacing the persistent working header.
     handle_agent_reasoning_delta(&mut chat, "**Analyzing**");
     // Render and snapshot.
     let height = chat.desired_height(/*width*/ 80);
@@ -2121,13 +2130,13 @@ async fn stream_error_updates_status_indicator() {
 }
 
 #[tokio::test]
-async fn stream_error_restores_hidden_status_indicator() {
+async fn stream_error_updates_persistent_status_indicator() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.on_task_started();
     chat.on_agent_message_delta("Preamble line\n".to_string());
     chat.on_commit_tick();
     drain_insert_history(&mut rx);
-    assert!(!chat.bottom_pane.status_indicator_visible());
+    assert!(chat.bottom_pane.status_indicator_visible());
 
     let msg = "Reconnecting... 2/5";
     let details = "Idle timeout waiting for SSE";

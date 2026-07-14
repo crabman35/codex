@@ -204,7 +204,7 @@ impl ChatWidget {
         self.mcp_startup_pending_next_round_saw_starting = false;
         self.update_task_running_state();
         if self.bottom_pane.is_task_running() && mcp_startup_owned_status {
-            self.restore_reasoning_status_header();
+            self.restore_working_status_header();
         }
         self.maybe_send_next_queued_input();
         self.request_redraw();
