@@ -7,6 +7,12 @@
 use super::*;
 use crate::session_resume::read_session_runtime_details;
 
+#[derive(Clone, Copy)]
+pub(super) enum ThreadAttachPresentation {
+    SessionLineage,
+    PromptEdit,
+}
+
 impl App {
     pub(super) async fn open_agent_picker(&mut self, app_server: &mut AppServerSession) {
         self.backfill_loaded_subagent_threads(app_server).await;
@@ -270,7 +276,7 @@ impl App {
         }
 
         let (session, turns, live_attached) = match app_server
-            .resume_thread(self.config.clone(), thread_id)
+            .resume_thread(self.config.clone(), thread_id, self.resume_model_settings())
             .await
         {
             Ok(started) => (started.session, started.turns, true),
@@ -572,6 +578,7 @@ impl App {
                         tui,
                         app_server,
                         started,
+                        ThreadAttachPresentation::SessionLineage,
                         initial_user_message,
                     )
                     .await
@@ -606,6 +613,7 @@ impl App {
         tui: &mut tui::Tui,
         app_server: &mut AppServerSession,
         started: AppServerStartedThread,
+        presentation: ThreadAttachPresentation,
         initial_user_message: Option<crate::chatwidget::UserMessage>,
     ) -> Result<()> {
         // Initial messages are for freshly attached primary threads only. Thread switches and
@@ -618,8 +626,12 @@ impl App {
             initial_user_message,
         );
         self.replace_chat_widget(ChatWidget::new_with_app_event(init));
-        self.enqueue_primary_thread_session(started.session, started.turns)
-            .await?;
+        self.enqueue_primary_thread_session_with_presentation(
+            started.session,
+            started.turns,
+            presentation,
+        )
+        .await?;
         self.backfill_loaded_subagent_threads(app_server).await;
         Ok(())
     }
@@ -803,7 +815,11 @@ impl App {
             self.chat_widget.rollout_path().as_deref(),
         );
         match app_server
-            .resume_thread(resume_config.clone(), target_session.thread_id)
+            .resume_thread(
+                resume_config.clone(),
+                target_session.thread_id,
+                self.resume_model_settings(),
+            )
             .await
         {
             Ok(resumed) => {
@@ -818,7 +834,11 @@ impl App {
                     .update_search_dir(self.config.cwd.to_path_buf());
                 match self
                     .replace_chat_widget_with_app_server_thread(
-                        tui, app_server, resumed, /*initial_user_message*/ None,
+                        tui,
+                        app_server,
+                        resumed,
+                        ThreadAttachPresentation::SessionLineage,
+                        /*initial_user_message*/ None,
                     )
                     .await
                 {
