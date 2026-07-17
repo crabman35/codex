@@ -14,6 +14,7 @@ use crate::cwd_prompt::CwdPromptOutcome;
 use crate::cwd_prompt::CwdSelection;
 use crate::tui::Tui;
 use codex_protocol::ThreadId;
+use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_rollout::open_rollout_line_reader;
 use codex_state::StateRuntime;
 use codex_utils_path as path_utils;
@@ -25,6 +26,7 @@ struct RolloutResumeState {
     thread_id: Option<ThreadId>,
     cwd: Option<PathBuf>,
     model: Option<String>,
+    reasoning_effort: Option<ReasoningEffortConfig>,
 }
 
 #[derive(Deserialize)]
@@ -37,6 +39,7 @@ struct SessionMetadata {
 struct TurnContextResumeState {
     cwd: PathBuf,
     model: String,
+    effort: Option<ReasoningEffortConfig>,
 }
 
 #[derive(Deserialize)]
@@ -69,18 +72,28 @@ pub(crate) async fn read_session_model(
     thread_id: ThreadId,
     path: Option<&Path>,
 ) -> Option<String> {
+    read_session_runtime_details(state_db_ctx, thread_id, path)
+        .await
+        .map(|(model, _)| model)
+}
+
+pub(crate) async fn read_session_runtime_details(
+    state_db_ctx: Option<&StateRuntime>,
+    thread_id: ThreadId,
+    path: Option<&Path>,
+) -> Option<(String, Option<ReasoningEffortConfig>)> {
     if let Some(state_db_ctx) = state_db_ctx
         && let Ok(Some(metadata)) = state_db_ctx.get_thread(thread_id).await
         && let Some(model) = metadata.model
     {
-        return Some(model);
+        return Some((model, metadata.reasoning_effort));
     }
 
     let path = path?;
     read_rollout_resume_state(path)
         .await
         .ok()
-        .and_then(|state| state.model)
+        .and_then(|state| state.model.map(|model| (model, state.reasoning_effort)))
 }
 
 pub(crate) async fn resolve_cwd_for_resume_or_fork(
@@ -171,6 +184,7 @@ async fn read_rollout_resume_state(path: &Path) -> io::Result<RolloutResumeState
                 {
                     state.cwd = Some(turn_context.cwd);
                     state.model = Some(turn_context.model);
+                    state.reasoning_effort = turn_context.effort;
                 }
             }
             _ => {}
@@ -242,7 +256,11 @@ mod tests {
                 rollout_line(
                     "t2",
                     "turn_context",
-                    serde_json::json!({ "cwd": latest.clone(), "model": "latest" }),
+                    serde_json::json!({
+                        "cwd": latest.clone(),
+                        "model": "latest",
+                        "effort": "high",
+                    }),
                 ),
             ],
         )?;
@@ -252,6 +270,7 @@ mod tests {
         assert_eq!(state.thread_id, Some(thread_id));
         assert_eq!(state.cwd, Some(latest));
         assert_eq!(state.model, Some("latest".to_string()));
+        assert_eq!(state.reasoning_effort, Some(ReasoningEffortConfig::High));
         Ok(())
     }
 
@@ -280,6 +299,7 @@ mod tests {
         assert_eq!(state.thread_id, Some(thread_id));
         assert_eq!(state.cwd, Some(cwd));
         assert_eq!(state.model, None);
+        assert_eq!(state.reasoning_effort, None);
         Ok(())
     }
 

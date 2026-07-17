@@ -886,9 +886,18 @@ impl App {
         {
             return Ok(());
         }
+        // Cache collaboration metadata at receipt time so agents spawned by a background thread
+        // appear in the footer without waiting for that thread's transcript to be opened.
+        self.cache_collab_receiver_threads_for_notification(&notification);
         if let ServerNotification::ThreadSettingsUpdated(notification) = &notification {
             self.apply_thread_settings_to_cached_session(thread_id, &notification.thread_settings)
                 .await;
+            self.agent_navigation.set_runtime_details(
+                thread_id,
+                notification.thread_settings.model.clone(),
+                notification.thread_settings.effort.clone(),
+            );
+            self.sync_agent_status_line();
         }
         let inferred_session = self
             .infer_session_for_thread_notification(thread_id, &notification)
@@ -956,6 +965,21 @@ impl App {
             return;
         };
 
+        let item = match notification {
+            ServerNotification::ItemStarted(notification) => Some(&notification.item),
+            ServerNotification::ItemCompleted(notification) => Some(&notification.item),
+            _ => None,
+        };
+        let spawn_runtime_details = match item {
+            Some(ThreadItem::CollabAgentToolCall {
+                tool: codex_app_server_protocol::CollabAgentTool::SpawnAgent,
+                model: Some(model),
+                reasoning_effort,
+                ..
+            }) => Some((model.clone(), reasoning_effort.clone())),
+            _ => None,
+        };
+
         for receiver_thread_id in receiver_thread_ids {
             if collab_receiver_is_not_found(notification, receiver_thread_id) {
                 continue;
@@ -969,14 +993,21 @@ impl App {
                 continue;
             };
 
-            if self.agent_navigation.get(&thread_id).is_some() {
-                continue;
+            if self.agent_navigation.get(&thread_id).is_none() {
+                self.upsert_agent_picker_thread(
+                    thread_id, /*agent_nickname*/ None, /*agent_role*/ None,
+                    /*is_closed*/ false,
+                );
             }
 
-            self.upsert_agent_picker_thread(
-                thread_id, /*agent_nickname*/ None, /*agent_role*/ None,
-                /*is_closed*/ false,
-            );
+            if let Some((model, reasoning_effort)) = spawn_runtime_details.as_ref() {
+                self.agent_navigation.set_runtime_details(
+                    thread_id,
+                    model.clone(),
+                    reasoning_effort.clone(),
+                );
+                self.sync_agent_status_line();
+            }
         }
     }
 

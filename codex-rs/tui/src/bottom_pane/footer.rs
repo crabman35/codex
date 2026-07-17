@@ -1982,7 +1982,9 @@ mod tests {
             status_line_value: None,
             status_line_enabled: false,
             key_hints: FooterKeyHints::default_bindings(),
-            agent_status_line: Some(Line::from("Agents: ● Main  › ● Robie [explorer]")),
+            agent_status_line: Some(Line::from(
+                "Agents: ● Main  › ● Robie [explorer] (gpt-5.4 high)",
+            )),
         };
 
         snapshot_footer("footer_active_agent_label", props);
@@ -1999,7 +2001,9 @@ mod tests {
             status_line_value: Some(Line::from("Status line content".to_string())),
             status_line_enabled: true,
             key_hints: FooterKeyHints::default_bindings(),
-            agent_status_line: Some(Line::from("Agents: ● Main  › ● Robie [explorer]")),
+            agent_status_line: Some(Line::from(
+                "Agents: ● Main  › ● Robie [explorer] (gpt-5.4 high)",
+            )),
         };
 
         snapshot_footer("footer_status_line_with_active_agent_label", props.clone());

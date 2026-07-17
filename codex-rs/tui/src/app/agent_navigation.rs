@@ -24,6 +24,7 @@ use crate::multi_agents::format_agent_picker_item_name;
 use crate::multi_agents::next_agent_shortcut;
 use crate::multi_agents::previous_agent_shortcut;
 use codex_protocol::ThreadId;
+use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
@@ -43,8 +44,16 @@ use std::collections::HashMap;
 pub(crate) struct AgentNavigationState {
     /// Latest picker metadata for each tracked thread id.
     threads: HashMap<ThreadId, AgentPickerThreadEntry>,
+    /// Latest model and reasoning effort observed for each tracked thread id.
+    runtime_details: HashMap<ThreadId, AgentRuntimeDetails>,
     /// Stable first-seen traversal order for picker rows and keyboard cycling.
     order: Vec<ThreadId>,
+}
+
+#[derive(Debug)]
+struct AgentRuntimeDetails {
+    model: String,
+    reasoning_effort: Option<ReasoningEffortConfig>,
 }
 
 /// Direction of keyboard traversal through the stable picker order.
@@ -140,6 +149,22 @@ impl AgentNavigationState {
         }
     }
 
+    /// Records the effective model settings shown alongside a subagent in the footer.
+    pub(crate) fn set_runtime_details(
+        &mut self,
+        thread_id: ThreadId,
+        model: String,
+        reasoning_effort: Option<ReasoningEffortConfig>,
+    ) {
+        self.runtime_details.insert(
+            thread_id,
+            AgentRuntimeDetails {
+                model,
+                reasoning_effort,
+            },
+        );
+    }
+
     /// Marks a thread as closed without removing it from the traversal cache.
     ///
     /// Closed threads stay in the picker and in spawn order so users can still review them and so
@@ -164,6 +189,7 @@ impl AgentNavigationState {
     /// to a pristine single-session state.
     pub(crate) fn clear(&mut self) {
         self.threads.clear();
+        self.runtime_details.clear();
         self.order.clear();
     }
 
@@ -174,6 +200,7 @@ impl AgentNavigationState {
     /// would leave ghost rows in `/agent`.
     pub(crate) fn remove(&mut self, thread_id: ThreadId) {
         self.threads.remove(&thread_id);
+        self.runtime_details.remove(&thread_id);
         self.order.retain(|candidate| *candidate != thread_id);
     }
 
@@ -308,6 +335,25 @@ impl AgentNavigationState {
             } else {
                 spans.push(label.into());
             }
+
+            if !is_primary && let Some(details) = self.runtime_details.get(&thread_id) {
+                let model = details.model.trim();
+                let effort = match details.reasoning_effort.as_ref() {
+                    None | Some(ReasoningEffortConfig::None) => "default",
+                    Some(reasoning_effort) => reasoning_effort.as_str(),
+                };
+                let details = if model.is_empty() {
+                    format!(" ({effort})")
+                } else {
+                    format!(" ({model} {effort})")
+                };
+                let details = if entry.is_closed {
+                    Span::from(details).magenta().dim()
+                } else {
+                    Span::from(details).magenta()
+                };
+                spans.push(details);
+            }
         }
         Some(Line::from(spans))
     }
@@ -422,6 +468,16 @@ mod tests {
     #[test]
     fn agent_status_line_tracks_all_threads_and_current_selection() {
         let (mut state, main_thread_id, first_agent_id, second_agent_id) = populated_state();
+        state.set_runtime_details(
+            first_agent_id,
+            "gpt-5.4".to_string(),
+            Some(ReasoningEffortConfig::High),
+        );
+        state.set_runtime_details(
+            second_agent_id,
+            "gpt-5.3-codex".to_string(),
+            Some(ReasoningEffortConfig::Low),
+        );
         state.mark_closed(second_agent_id);
 
         assert_eq!(
@@ -433,7 +489,10 @@ mod tests {
                         .map(|span| span.content.as_ref())
                         .collect::<String>()
                 }),
-            Some("Agents: ● Main [default]  › ● Robie [explorer]  ○ Bob [worker]".to_string())
+            Some(
+                "Agents: ● Main [default]  › ● Robie [explorer] (gpt-5.4 high)  ○ Bob [worker] (gpt-5.3-codex low)"
+                    .to_string()
+            )
         );
     }
 }

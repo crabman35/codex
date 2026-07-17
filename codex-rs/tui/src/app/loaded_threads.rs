@@ -20,6 +20,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::protocol::SubAgentSource;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 /// A subagent thread discovered by the spawn-tree walk, carrying just enough metadata for the
 /// TUI to register it in the navigation cache and rendering metadata map.
@@ -29,6 +30,7 @@ pub(crate) struct LoadedSubagentThread {
     pub(crate) agent_nickname: Option<String>,
     pub(crate) agent_role: Option<String>,
     pub(crate) agent_path: Option<String>,
+    pub(crate) rollout_path: Option<PathBuf>,
 }
 
 /// Walks the spawn tree rooted at `primary_thread_id` and returns every descendant subagent.
@@ -88,6 +90,7 @@ pub(crate) fn find_loaded_subagent_threads_for_primary(
                     agent_nickname: thread.agent_nickname,
                     agent_role: thread.agent_role,
                     agent_path: thread_spawn_agent_path(&thread.source),
+                    rollout_path: thread.path,
                 })
         })
         .collect();
@@ -222,12 +225,14 @@ mod tests {
                     agent_nickname: Some("Scout".to_string()),
                     agent_role: Some("explorer".to_string()),
                     agent_path: None,
+                    rollout_path: None,
                 },
                 LoadedSubagentThread {
                     thread_id: grandchild_thread_id,
                     agent_nickname: Some("Atlas".to_string()),
                     agent_role: Some("worker".to_string()),
                     agent_path: None,
+                    rollout_path: None,
                 },
             ]
         );

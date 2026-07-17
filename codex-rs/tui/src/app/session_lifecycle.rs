@@ -5,6 +5,7 @@
 //! cache used for multi-agent navigation.
 
 use super::*;
+use crate::session_resume::read_session_runtime_details;
 
 impl App {
     pub(super) async fn open_agent_picker(&mut self, app_server: &mut AppServerSession) {
@@ -681,6 +682,12 @@ impl App {
         }
 
         for thread in find_loaded_subagent_threads_for_primary(threads, primary_thread_id) {
+            let runtime_details = read_session_runtime_details(
+                self.state_db.as_deref(),
+                thread.thread_id,
+                thread.rollout_path.as_deref(),
+            )
+            .await;
             let agent_path = thread.agent_path;
             self.upsert_agent_picker_thread(
                 thread.thread_id,
@@ -690,6 +697,13 @@ impl App {
             );
             self.agent_navigation
                 .set_agent_path(thread.thread_id, agent_path);
+            if let Some((model, reasoning_effort)) = runtime_details {
+                self.agent_navigation.set_runtime_details(
+                    thread.thread_id,
+                    model,
+                    reasoning_effort,
+                );
+            }
         }
         self.sync_agent_status_line();
 
